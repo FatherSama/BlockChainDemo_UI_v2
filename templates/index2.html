@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLOCKCHAIN DEMO</title>
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <script src="/static/js/jquery-3.7.1.min.js"></script>
+    <script src="/static/js/popper.min.js"></script>
+    <script src="/static/js/bootstrap.min.js"></script>
+    <style>
+        .output-box {
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            padding: 10px;
+            height: 600px;
+            overflow-y: auto;
+            border-radius: 5px;
+        }
+
+        .mt-3 {
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            margin-right: 10px;
+        }
+
+        .container {
+            max-width: 1600px;
+        }
+
+        td {
+            text-align: center;
+        }
+    </style>
+    <script>
+        $(document).ready(function () {
+            let digInterval = null; // 定时器句柄
+            let isDigging = false; // 挖掘状态标志
+
+            // Miner Server Buttons
+            $('#minerRun').click(startMiner);
+            $('#minerStop').click(stopMiner);
+
+            // Dig Buttons
+            $('#digRun').click(startDig);
+            $('#digStop').click(stopDig);
+
+            async function startMiner() {
+                try {
+                    const response = await fetch('/start_miner');
+                    const result = await response.json();
+                    $('#minerOutput').text(result.message || 'Running...').addClass('bg-success text-white');
+                } catch (error) {
+                    $('#minerOutput').text('Error starting miner.').addClass('bg-danger text-white');
+                }
+            }
+
+            async function stopMiner() {
+                try {
+                    const response = await fetch('/stop_miner');
+                    const result = await response.json();
+                    $('#minerOutput').text(result.message || 'Stopped.').removeClass('bg-success bg-danger text-white');
+                } catch (error) {
+                    $('#minerOutput').text('Error stopping miner.').addClass('bg-danger text-white');
+                }
+            }
+
+            async function startDig() {
+                try {
+                    const response = await fetch('/start_dig');
+                    const result = await response.json();
+                    $('#digOutput').text(result.message || 'Running...').addClass('bg-success text-white');
+                } catch (error) {
+                    $('#digOutput').text('Error starting dig.').addClass('bg-danger text-white');
+                }
+            }
+
+            async function stopDig() {
+                try {
+                    const response = await fetch('/stop_dig');
+                    const result = await response.json();
+                    $('#digOutput').text(result.message || 'Stopped.').removeClass('bg-success bg-danger text-white');
+                } catch (error) {
+                    $('#digOutput').text('Error stopping dig.').addClass('bg-danger text-white');
+                }
+            }
+
+
+        });
+
+
+        {#    function startDig() {#}
+        {#        if (digInterval !== null || isDigging) {#}
+        {#            console.log('Digging already running. Interval ID:', digInterval);#}
+        {#            return; // 防止重复启动#}
+        {#        }#}
+        {##}
+        {#        isDigging = true; // 设置挖掘状态#}
+        {#        $('#digOutput')#}
+        {#            .text('............Dig started............')#}
+        {#            .addClass('bg-success text-white'); // 添加绿色背景色#}
+        {##}
+        {#        digInterval = setInterval(() => {#}
+        {#            console.log('Running digInterval with ID:', digInterval);#}
+        {#            $.ajax({#}
+        {#                url: '/start_dig',#}
+        {#                type: 'GET',#}
+        {#                success: function (data) {#}
+        {#                    if (!isDigging) return; // 如果已停止挖掘，直接返回#}
+        {#                    $('#digOutput').append(`<div>${data.dig_str}</div>`);#}
+        {#                    $('#minerOutput').append(`<div>${data.miner_data}</div>`);#}
+        {#                },#}
+        {#                error: function () {#}
+        {#                    if (!isDigging) return; // 如果已停止挖掘，直接返回#}
+        {#                    $('#digOutput').append('<div>Error fetching dig output.</div>');#}
+        {#                }#}
+        {#            });#}
+        {#        }, 1000);#}
+        {##}
+        {#        console.log('Started new digInterval with ID:', digInterval);#}
+        {#    }#}
+        {##}
+        {#    function stopDig() {#}
+        {#        if (digInterval !== null) {#}
+        {#            console.log('Stopping digInterval with ID:', digInterval);#}
+        {#            clearInterval(digInterval); // 停止定时器#}
+        {#            digInterval = null; // 清除定时器ID引用#}
+        {#        }#}
+        {##}
+        {#        isDigging = false; // 停止挖掘标志#}
+        {##}
+        {#        $('#digOutput')#}
+        {#            .append('<div>Dig stopped.</div>')#}
+        {#            .removeClass('bg-success text-white'); // 恢复原始背景色#}
+        {##}
+        {#        console.log('isDigging set to false.');#}
+        {#    }#}
+
+    </script>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <a class="navbar-brand" href="#">BLOCKCHAIN DEMO</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav"
+            aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav" style="margin-left: 20%">
+            <li class="nav-item">
+                <a class="nav-link active"
+                   href="/app/index">INDEX</a>
+            </li>
+
+        </ul>
+
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row mt-5">
+        <div class="col-md-6">
+            <h3 class="text-center">Miner Server</h3>
+            <div class="d-flex justify-content-center">
+                <button id="minerRun" class="btn btn-primary">Run</button>
+                <button id="minerStop" class="btn btn-danger">Stop</button>
+            </div>
+            <div id="minerOutput" class="output-box mt-3"></div>
+        </div>
+        <div class="col-md-6">
+            <h3 class="text-center"> Dig</h3>
+            <div class="d-flex justify-content-center">
+                <button id="digRun" class="btn btn-primary">Run</button>
+                <button id="digStop" class="btn btn-danger">Stop</button>
+            </div>
+            <div id="digOutput" class="output-box mt-3"></div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-5" style="width: 60%">
+    <h1 class="text-center mb-4">Transaction Information</h1>
+    <form id="transactionForm">
+        <div id="InquiryResult"></div>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group">
+                    <label for="from">From:</label>
+                    <input type="text" id="from" name="from" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-group">
+                    <label for="to">To:</label>
+                    <input type="text" id="to" name="to" class="form-control" required>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group">
+                    <label for="amount">Amount:</label>
+                    <input type="number" id="amount" name="amount" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <br>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1%">Submit Transaction</button>
+            </div>
+        </div>
+
+    </form>
+</div>
+<div class="container mt-5">
+    <div style="text-align: center;">
+        <button id="inquiryBtn" class="btn btn-primary mb-4">Query Transaction List</button>
+    </div>
+    <div id="ledgerTable" class="table-responsive">
+
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+
+        // Handle form submission
+        $('#transactionForm').submit(function (event) {
+            event.preventDefault(); // Prevent the default form submission
+            const formData = $(this).serialize(); // Serialize form data
+
+            $.ajax({
+                url: '/process',
+                method: 'POST',
+                data: formData,
+                success: function (response) {
+                    // Display success message in InquiryResult box
+                    $('#InquiryResult').html(`<p class="text-success">${response.message}</p>`);
+                },
+                error: function () {
+                    // Display error message in InquiryResult box
+                    $('#InquiryResult').html('<p class="text-danger">Error processing transaction.</p>');
+                }
+            });
+        });
+
+        $('#inquiryBtn').click(function () {
+            $.ajax({
+                url: '/inquiry',
+                method: 'GET',
+                success: function (data) {
+                    renderTable(data);
+                },
+                error: function () {
+                    $('#ledgerTable').html('<p class="text-danger">Error fetching ledger data.</p>');
+                }
+            });
+        });
+
+        function renderTable(data) {
+            let table = `
+                <table class="table table-bordered table-hover">
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Index</th>
+                            <th>Timestamp</th>
+                            <th>Proof of Work</th>
+                            <th>Transactions</th>
+                            <th>Previous Hash</th>
+                            <th style="width: 10%">Hash</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.forEach(entry => {
+                table += `
+                    <tr>
+                        <td style="text-align: center">${entry.index}</td>
+                        <td style="text-align: center">${entry.timestamp}</td>
+                        <td style="text-align: center">${entry.data['proof-of-work']}</td>
+                        <td style="text-align: center">
+                            ${entry.data.transactions ? renderTransactions(entry.data.transactions) : 'No transactions'}
+                        </td>
+                        <td style="text-align: center">${entry.previous_hash}</td>
+                        <td style="text-align: center;width: 10%" >${entry.hash}</td>
+                    </tr>
+                `;
+            });
+
+            table += `
+                    </tbody>
+                </table>
+            `;
+
+            $('#ledgerTable').html(table);
+        }
+
+        function renderTransactions(transactions) {
+            let transactionRows = transactions.map(tx => `
+                <div>
+                    From: ${tx.from}, To: ${tx.to}, Amount: ${tx.amount}
+                </div>
+            `).join('');
+            return transactionRows;
+        }
+    });
+</script>
+</body>
+</html>

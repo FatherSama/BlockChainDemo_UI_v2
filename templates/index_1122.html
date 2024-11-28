@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockchain Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            text-align: center;
+            margin-top: 50px;
+        }
+        .title {
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        .button-group {
+            margin-bottom: 20px;
+        }
+        .button-group button {
+            margin: 0 10px;
+            padding: 10px 20px;
+            font-size: 1em;
+        }
+        .output-box {
+            width: 50%;
+            height: 100px;
+            margin: 0 auto;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">BLOCKCHAIN DEMO</div>
+        <div class="button-group">
+            <button onclick="runMinerServer()">Run Miner Server</button>
+            <button onclick="stopMinerServer()">Stop Miner Server</button>
+        </div>
+        <div class="button-group">
+            <button onclick="runDig()">Run Dig</button>
+            <button onclick="stopDig()">Stop Dig</button>
+        </div>
+        <h2>Miner Server Output:</h2>
+<!--        <pre>{{ Miner_Server_Output }}</pre>-->
+        <div class="output-box" id="minerServerOutput">Miner Server Output</div>
+        <h2>Dig Output:</h2>
+<!--        <pre>{{ Dig_Output }}</pre>-->
+        <div class="output-box" id="digOutput">Dig Output</div>
+        <h2>Transaction Submit:</h2>
+        <form action="/process" method="post">
+            <label for="from">From:</label>
+            <input type="text" id="from" name="from" required><br><br>
+
+            <label for="to">To:</label>
+            <input type="text" id="to" name="to" required><br><br>
+
+            <label for="amount">Amount:</label>
+            <input type="number" id="amount" name="amount" required><br><br>
+
+            <button onclick="submit()">Submit</button>
+        </form>
+        <h2>Transaction Inquiry:</h2>
+        <button onclick="run_inquiry()">Query transaction information</button>
+        <div class="output-box" id="InquiryResult">Inquiry Result here...</div>
+
+    </div>
+
+    <script>
+        // JavaScript to handle button clicks and communicate with the backend
+        async function runMinerServer() {
+            const response = await fetch('/run_miner_server');
+            if (response.ok) {
+                document.getElementById('minerServerOutput').textContent = 'Running...';
+                // Optionally, start fetching output from the backend periodically
+                await fetchOutput('minerServerOutput');
+            } else {
+                alert('Failed to run Miner Server');
+            }
+        }
+
+        async function stopMinerServer() {
+            const response = await fetch('/stop_miner_server');
+            if (response.ok) {
+                document.getElementById('minerServerOutput').textContent = 'Stopped';
+                // Stop fetching output
+                clearInterval(window.minerServerInterval);
+            } else {
+                alert('Failed to stop Miner Server');
+            }
+        }
+
+        async function runDig() {
+            const response = await fetch('/run_dig');
+            if (response.ok) {
+                document.getElementById('digOutput').textContent = 'Running...';
+                // Optionally, start fetching output from the backend periodically
+                await fetchOutput('digOutput');
+            } else {
+                alert('Failed to run Dig');
+            }
+        }
+
+        async function stopDig() {
+            const response = await fetch('/stop_dig');
+            if (response.ok) {
+                document.getElementById('digOutput').textContent = 'Stopped';
+                // Stop fetching output
+                clearInterval(window.digInterval);
+            } else {
+                alert('Failed to stop Dig');
+            }
+        }
+
+        async function fetchOutput(outputBoxId) {
+            // const outputBox = document.getElementById(outputBoxId);
+            if (outputBoxId === 'minerServerOutput') {
+                fetch('/miner_server_output')
+                .then(response => response.json())
+                .then(data => {
+                    // 将新获取的输出行添加到现有输出中
+                    outputLines = outputLines.concat(data);
+                    // 更新页面内容
+                    const outputElement = document.getElementById('minerServerOutput');
+                    outputElement.textContent = outputLines.join('\n');
+                })
+                .catch(error => console.error('Error fetching script output:', error));
+            }
+            else if (outputBoxId === 'digOutput') {
+                fetch('/dig_output')
+                .then(response => response.json())
+                .then(data => {
+                    // 将新获取的输出行添加到现有输出中
+                    outputLines = outputLines.concat(data);
+                    // 更新页面内容
+                    const outputElement = document.getElementById('digOutput');
+                    outputElement.textContent = outputLines.join('\n');
+                })
+                .catch(error => console.error('Error fetching script output:', error));
+            }
+        }
+        // 每1秒刷新一次输出
+        setInterval(fetchOutput, 1000);
+
+
+        async function submit() {
+            const formData = new FormData(event.target);
+            const data = {
+                from: formData.get('from'),
+                to: formData.get('to'),
+                amount: formData.get('amount')
+            };
+            await fetch('/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+        }
+
+
+        async function run_inquiry() {
+            const response = await fetch('/run_inquiry');
+            if (response.ok) {
+                // document.getElementById('digOutput').textContent = 'Running...';
+                // await fetchOutput('digOutput');
+            } else {
+                alert('Failed to run Inquiry!');
+            }
+        }
+
+
+
+        // document.querySelector('form').addEventListener('submit', function(event) {
+        //     event.preventDefault(); // 阻止表单的默认提交行为
+        //
+        //     const formData = new FormData(event.target);
+        //     const data = {
+        //         from: formData.get('from'),
+        //         to: formData.get('to'),
+        //         amount: formData.get('amount')
+        //     };
+        //
+        //     fetch('/process', {
+        //         method: 'POST',
+        //         headers: {
+        //             'Content-Type': 'application/json'
+        //         },
+        //         body: JSON.stringify(data)
+        //     })
+        //     .then(response => response.json())
+        //     .then(result => {
+        //         if (result.error) {
+        //             alert(result.error);
+        //         } else {
+        //             document.getElementById('result').innerText = JSON.stringify(result, null, 2);
+        //         }
+        //     })
+        //     .catch(error => {
+        //         console.error('Error:', error);
+        //         alert('An error occurred while processing your request.');
+        //     });
+        // });
+
+
+        // function fetchOutput(outputBoxId) {
+        //     const outputBox = document.getElementById(outputBoxId);
+        //     if (outputBoxId === 'minerServerOutput') {
+        //         window.minerServerInterval = setInterval(async () =>
+        //         {
+        //             const response = await fetch('/miner_server_output');
+        //             if (response.ok) {
+        //                 const data = await response.text();
+        //                 outputBox.textContent = data;
+        //             } else {
+        //                 alert('Failed to fetch Miner Server output');
+        //                 clearInterval(window.minerServerInterval);
+        //             }
+        //         }, 1000); // Fetch every second
+        //     } else if (outputBoxId === 'digOutput') {
+        //         window.digInterval = setInterval(async () =>
+        //         {
+        //             const response = await fetch('/dig_output');
+        //             if (response.ok) {
+        //                 const data = await response.text();
+        //                 outputBox.textContent = data;
+        //             } else {
+        //                 alert('Failed to fetch Dig output');
+        //                 clearInterval(window.digInterval);
+        //             }
+        //         }, 1000); // Fetch every second
+        //     }
+        // }
+    </script>
+</body>
+</html>
