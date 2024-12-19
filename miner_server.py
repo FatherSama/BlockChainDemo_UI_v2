@@ -15,7 +15,7 @@ import hashlib as hasher
 import datetime as date
 import pickle
 import time
-
+import hashlib
 
 # ==================================================================================================
 # 定义区块结构
@@ -75,17 +75,32 @@ def find_new_chains():
 
 
 # 挖矿算法：工作量证明
-# 要求返回值能够被9和上一次last_proof整除
 def proof_of_work(last_proof):
-    # Create a variable, use it to find next proof of work
-    incrementor = last_proof + 1
-    # Keep incrementing the incrementor until it's equal to a number divisible by 9
-    # and the proof of work of the previous
-    # block in the chain
-    while not (incrementor % 9 == 0 and incrementor % last_proof == 0):
+    """
+    简单的工作量证明算法：
+     - 找到一个数字 p'，使得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
+     - p 是上一个证明，p' 是新的证明
+    :param last_proof: <int>
+    :return: <int>
+    """
+    incrementor = 0  # 初始化新的证明
+    # 不断寻找满足条件的新的证明
+    while not valid_proof(last_proof, incrementor):
         incrementor += 1
-    # Once that number is found, we can return it as a proof work
     return incrementor
+
+def valid_proof(last_proof, incrementor):
+    """
+    验证工作量证明是否有效
+    :param last_proof: <int> 上一个证明
+    :param incrementor: <int> 当前尝试的证明
+    :return: <bool> 是否有效
+    """
+    # 将上一个证明和当前证明拼接
+    guess = f'{last_proof}{incrementor}'.encode()  # 编码为字节
+    guess_hash = hashlib.sha256(guess).hexdigest()  # 计算哈希值
+    # 检查哈希值是否以四个零开头
+    return guess_hash[:4] == "0000"
 
 
 # ==================================================================================================
