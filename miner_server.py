@@ -16,6 +16,7 @@ import datetime as date
 import pickle
 import time
 import hashlib
+from consensus import PBFTConsensus
 
 # ==================================================================================================
 # 定义区块结构
@@ -78,7 +79,7 @@ def find_new_chains():
 def proof_of_work(last_proof):
     """
     简单的工作量证明算法：
-     - 找到一个数字 p'，使得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
+     - 找到一个数字 p'使得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
      - p 是上一个证明，p' 是新的证明
     :param last_proof: <int>
     :return: <int>
@@ -100,7 +101,7 @@ def valid_proof(last_proof, incrementor):
     guess = f'{last_proof}{incrementor}'.encode()  # 编码为字节
     guess_hash = hashlib.sha256(guess).hexdigest()  # 计算哈希值
     # 检查哈希值是否以四个零开头
-    return guess_hash[0] == "0"
+    return guess_hash[:2] == "00"
 
 
 # ==================================================================================================
@@ -111,13 +112,13 @@ ip_local = '127.0.0.1'
 # ip_local = '192.168.2.42'
 my_node = 'http://' + ip_local + ':5000/'
 # 本机名称
-miner_name = "Miner_jy_ThinkBook"
+miner_name = "Alice"
 
 # 所有矿工的ip
 node1 = my_node
 ip_node2 = '192.168.2.229'
-node2 = 'http://' + ip_node2 + ':5000/'
-all_nodes = {node1, node2}
+node2 = 'http://' + ip_node2 + ':5001/'
+all_nodes = {node1}
 # 集合差集，即其他节点
 peer_nodes = all_nodes.difference({my_node})
 # 设置超时时间
@@ -131,6 +132,8 @@ this_node_transactions = []
 
 node = Flask(__name__)
 
+# 在Flask应用初始化后添加PBFT共识实例
+pbft = PBFTConsensus(all_nodes, my_node)
 
 # ==================================================================================================
 # 处理 POST 请求，接收交易信息
@@ -170,64 +173,120 @@ def get_blocks():
 # 处理 GET 请求 /mine，用于挖矿
 @node.route('/mine', methods=['GET'])
 def mine():
-    # 获取上一个块的 proof of work
+    # 只有主节点才能挖矿
+    if not pbft.is_primary():
+        return jsonify(["Not the primary node"])
+    
+    # 原有的挖矿逻辑保持不变
     last_block = bc.blockchain[len(bc.blockchain) - 1]
     last_proof = last_block.data['proof-of-work']
-    # 使用PoW算法挖矿
     proof = proof_of_work(last_proof)
-
-    # 当找到一个有效的 proof of work，通过添加交易来奖励挖矿者
+    
     this_node_transactions.append(
         {"from": "Network", "to": miner_name, "amount": 1}
     )
-    # 收集所需数据来创建新的块
+    
     new_block_data = {
         "proof-of-work": proof,
         "transactions": list(this_node_transactions)
     }
     new_block_index = last_block.index + 1
-    new_block_timestamp = this_timestamp = date.datetime.now()
+    new_block_timestamp = date.datetime.now()
     last_block_hash = last_block.hash
-    # 清空待处理交易列表
     this_node_transactions[:] = []
-    # 创建新块
+    
     mined_block = Block(
         new_block_index,
         new_block_timestamp,
         new_block_data,
         last_block_hash
     )
-    res_list = []
-    res_list.append("----------- I Got One Coin ------------")
+    
+    # 使用PBFT共识
+    if pbft.broadcast_prepare(mined_block):
+        # 如果准备阶段成功，进入提交阶段
+        if pbft.broadcast_commit(mined_block):
+            # 共识成功，将区块添加到链上
+            bc.blockchain.append(mined_block)
+            return jsonify(["Block added successfully"])
+    
+    return jsonify(["Consensus failed"])
 
-    print("----------- I Got One Coin ------------")  # 这里应该先跟别人长度对比，再决定是否把自己的加进去
-    # 共识算法
-    # 获取其他节点的区块链
-    other_chains = find_new_chains()
-    # 如果自己的区块链不是最长的，则设为最长的区块链
-    longest_chain = bc.blockchain
-    res_list.append("Length of my own book：{}".format(len(bc.blockchain)))
-    print("Length of my own book", len(bc.blockchain))
-    for chain in other_chains:
-        res_list.append("Length of others book", len(chain))
-        print("Length of others book", len(chain))
-        if len(longest_chain) < len(chain):
-            res_list.append('---------My BookLen < Others----------')
-            print('---------My BookLen < Others----------')
-            longest_chain = chain
-    # 如果自己是最长的区块或者和别人等长，那么把新挖到的区块添加进去
-    if len(bc.blockchain) == len(longest_chain):
-        bc.blockchain.append(mined_block)
-    # 如果最长的区块链不是自己的，则停止挖矿并将自己的区块链设为其他矿工中最长的
-    else:
-        bc.blockchain = longest_chain
-    res_list.append("My BookLen after Consensus:{}".format(len(bc.blockchain)))
-    print("My BookLen after Consensus: ", len(bc.blockchain))
-    return jsonify(res_list)
+# 在Block类后添加区块验证函数
+def valid_block(block):
+    """
+    验证区块的有效性
+    1. 检查区块的索引是否连续
+    2. 检查区块的previous_hash是否正确
+    3. 验证工作量证明
+    """
+    # 如果是创世块，直接返回True
+    if block.index == 0:
+        return True
+        
+    # 获取前一个区块
+    previous_block = bc.blockchain[-1]
+    
+    # 验证区块索引是否连续
+    if block.index != previous_block.index + 1:
+        print(f"Invalid block index: {block.index}")
+        return False
+        
+    # 验证前一个区块的哈希值
+    if block.previous_hash != previous_block.hash:
+        print(f"Invalid previous hash: {block.previous_hash}")
+        return False
+        
+    # 验证工作量证明
+    last_proof = previous_block.data['proof-of-work']
+    current_proof = block.data['proof-of-work']
+    if not valid_proof(last_proof, current_proof):
+        print(f"Invalid proof of work: {current_proof}")
+        return False
+        
+    return True
 
+# 修改handle_prepare函数中的验证逻辑
+@node.route('/prepare', methods=['POST'])
+def handle_prepare():
+    try:
+        data = pickle.loads(request.get_data())
+        block = data['block']
+        node_from = data['from']
+        
+        # 验证区块
+        if valid_block(block):
+            # 添加准备投票
+            if pbft.add_prepare_vote(block.hash, node_from):
+                # 如果收到足够的准备投票，进入提交阶段
+                pbft.broadcast_commit(block)
+            return "OK"
+        else:
+            return "Invalid block", 400
+    except Exception as e:
+        print(f"Error in handle_prepare: {str(e)}")
+        return "Error processing prepare message", 500
 
-
-
+# 修改handle_commit函数，添加验证
+@node.route('/commit', methods=['POST'])
+def handle_commit():
+    try:
+        data = pickle.loads(request.get_data())
+        block = data['block']
+        node_from = data['from']
+        
+        # 再次验证区块（以防万一）
+        if valid_block(block):
+            # 添加提交投票
+            if pbft.add_commit_vote(block.hash, node_from):
+                # 如果收到足够的提交投票，将区块添加到链上
+                bc.blockchain.append(block)
+            return "OK"
+        else:
+            return "Invalid block", 400
+    except Exception as e:
+        print(f"Error in handle_commit: {str(e)}")
+        return "Error processing commit message", 500
 
 # 运行应用
 if __name__ == "__main__":

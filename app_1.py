@@ -28,7 +28,7 @@ my_py_path = os.getcwd() + '\\.venv\\Scripts\\python.exe'
 # node1 = 'http://192.168.2.42:5000/'       # 矿工1，thinkbook笔记本
 node1 = 'http://127.0.0.1:5000/'            # 矿工1，thinkbook笔记本
 node2 = 'http://192.168.2.229:5000/'        # 矿工2，双清服务器
-all_nodes = {node1, node2}
+all_nodes = {node1}
 
 
 # ======================================================================================================================
@@ -54,7 +54,8 @@ def start_sub_app():
             [python_executable, 'miner_server.py'], env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True  # 输出日志为字符串
+            text=True,  # 输出日志为字符串
+            encoding='utf-8'  # 使用UTF-8编码
         )
         stdout, stderr = subprocess_miner.communicate(timeout=5)
         print(f"Subprocess STDOUT: {stdout}")
@@ -117,68 +118,6 @@ def stop_dig():
         return jsonify({"status": "success", "message": "Sub Flask app stopped."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
-
-# # 路由，用于处理Start Dig按钮的请求
-# @app.route('/start_dig', methods=['GET'])
-# def start_dig():
-#     while True:
-#         # 开始挖矿，在这里会停留一段时间，直到做完题挖到一个币
-#         response = requests.get(my_node + 'mine')  # 发送GET请求，控制miner_server挖矿
-#         if response.status_code == 200:
-#             miner_data = response.json()
-#         else:
-#             miner_data = "Error"
-#         blockchain = requests.get(my_node + 'blocks')  # 挖矿完毕，返回区块链数据
-#         blockchain = pickle.loads(blockchain.content)  # pickle加载数据
-#
-#         blocks = []
-#         # 将返回的区块链数据写入到blocks列表中，用于输出显示
-#         for block in blockchain:
-#             blocks.append({
-#                 "index": block.index,
-#                 "timestamp": str(block.timestamp),
-#                 "data": block.data,
-#                 "previous_hash": block.previous_hash,
-#                 "hash": block.hash
-#             })
-#         dig_str = "The last block:{}".format(blocks[-1])
-#         res_dict = {
-#             "miner_data": miner_data,
-#             'dig_str': dig_str
-#         }
-#         return jsonify(res_dict)
-
-# # 路由，用于处理Start Dig按钮的请求
-# @app.route('/start_dig', methods=['GET'])
-# def start_dig():
-#     response = requests.get(my_node + 'mine')  # 发送GET请求
-#     if response.status_code == 200:
-#         miner_data = response.json()
-#     else:
-#         miner_data = "Error"
-#
-#     blockchain = requests.get(my_node + 'blocks')
-#     blockchain = pickle.loads(blockchain.content)
-#
-#     blocks = []
-#     for block in blockchain:
-#         blocks.append({
-#             "index": block.index,
-#             "timestamp": str(block.timestamp),
-#             "data": block.data,
-#             "previous_hash": block.previous_hash,
-#             "hash": block.hash
-#         })
-#     blocks_json = json.dumps(blocks, indent=2)
-#     # print("Current Book: ", blocks_json)
-#     print("The last block of the book: ", blocks[-1])
-#     dig_str = "The last block of the book:{}".format(blocks[-1])
-#     res_dict = {
-#         "miner_data": miner_data,
-#         'dig_str': dig_str
-#     }
-#
-#     return jsonify(res_dict)
 
 
 # 路由，用于处理“提交交易信息”按钮的请求
