@@ -29,7 +29,7 @@ class PBFTConsensus:
         """
         if len(self.nodes) <= 1:
             return 0
-        return (2 * len(self.nodes)) // 3
+        return (1 * len(self.nodes)) // 3
     
     def broadcast_prepare(self, block) -> bool:
         """广播准备消息"""

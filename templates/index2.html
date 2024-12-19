@@ -118,7 +118,6 @@
         {#                }#}
         {#            });#}
         {#        }, 1000);#}
-        {##}
         {#        console.log('Started new digInterval with ID:', digInterval);#}
         {#    }#}
         {##}
@@ -221,6 +220,24 @@
 
     </div>
 </div>
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header">
+            <h5>自然语言交易</h5>
+        </div>
+        <div class="card-body">
+            <form id="nlTransactionForm">
+                <div class="form-group">
+                    <label for="transactionText">请输入交易描述：</label>
+                    <input type="text" class="form-control" id="transactionText" 
+                           placeholder="例如：Alice向Bob转账5个币">
+                </div>
+                <button type="submit" class="btn btn-primary mt-2">提交交易</button>
+            </form>
+            <div id="transactionResult" class="mt-3"></div>
+        </div>
+    </div>
+</div>
 <script>
     $(document).ready(function () {
 
@@ -304,6 +321,48 @@
             `).join('');
             return transactionRows;
         }
+
+        document.getElementById('nlTransactionForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const text = document.getElementById('transactionText').value;
+            const resultDiv = document.getElementById('transactionResult');
+            
+            // 发送请求到解析端点
+            fetch('/parse_transaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: text })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            交易已处理：
+                            <br>从 ${data.transaction.from} 
+                            <br>到 ${data.transaction.to} 
+                            <br>金额：${data.transaction.amount}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            错误：${data.message}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        请求失败：${error}
+                    </div>
+                `;
+            });
+        });
     });
 </script>
 </body>

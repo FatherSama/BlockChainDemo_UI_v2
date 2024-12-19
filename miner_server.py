@@ -79,7 +79,7 @@ def find_new_chains():
 def proof_of_work(last_proof):
     """
     简单的工作量证明算法：
-     - 找到一个数字 p'使得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
+     - 找到一个数字 p'��得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
      - p 是上一个证明，p' 是新的证明
     :param last_proof: <int>
     :return: <int>
@@ -117,11 +117,11 @@ miner_name = "Alice"
 # 所有矿工的ip
 node1 = my_node
 ip_node2 = '192.168.2.229'
-node2 = 'http://' + ip_node2 + ':5001/'
-all_nodes = {node1}
+node2 = 'http://' + ip_node2 + ':5000/'
+all_nodes = {node1,node2}
 # 集合差集，即其他节点
 peer_nodes = all_nodes.difference({my_node})
-# 设置超时时间
+# 设置超���时间
 timeout = 3
 
 # 创建一个区块链
@@ -287,6 +287,103 @@ def handle_commit():
     except Exception as e:
         print(f"Error in handle_commit: {str(e)}")
         return "Error processing commit message", 500
+
+# 在现有的路由之前添加新的路由
+@node.route('/parse_transaction', methods=['POST'])
+def parse_transaction():
+    """解析自然语言并转换为交易"""
+    try:
+        # 获取用户输入的文本
+        text = request.get_json()['text']
+        
+        # 调用大语言模型解析文本
+        # 这里使用一个简单的示例解析逻辑，你需要替换为实际的大语言模型API调用
+        transaction = parse_text_to_transaction(text)
+        
+        if transaction:
+            # 将解析后的交易发送到/txion端点
+            response = requests.post(
+                f"{my_node}txion",
+                json=transaction,
+                timeout=timeout
+            )
+            
+            if response.status_code == 200:
+                return jsonify({
+                    "success": True,
+                    "message": "Transaction processed successfully",
+                    "transaction": transaction
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": "Failed to process transaction"
+                }), 400
+        else:
+            return jsonify({
+                "success": False,
+                "message": "Could not parse transaction from text"
+            }), 400
+            
+    except Exception as e:
+        print(f"Error processing natural language transaction: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }), 500
+
+def parse_text_to_transaction(text):
+    """
+    使用大语言模型解析文本为交易信息
+    示例文本：
+    - "Alice 向 Bob 转账 5 个币"
+    - "从 Charlie 转 10 个币给 Dave"
+    """
+    try:
+        # 这里替换为实际的大语言模型API调用
+        # 示例：使用OpenAI的API
+        import openai
+        
+        # 设置你的API密钥
+        openai.api_key = 'your-api-key'
+        
+        # 构造提示词
+        prompt = f"""
+        请将以下文本解析为交易信息，返回JSON格式：
+        {text}
+        
+        格式要求：
+        {{
+            "from": "发送方名称",
+            "to": "接收方名称",
+            "amount": 数字金额
+        }}
+        """
+        
+        # 调用API
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "你是一个交易解析助手，负责将自然语言转换为结构化的交易信息。"},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        # 解析返回的JSON
+        import json
+        transaction = json.loads(response.choices[0].message.content)
+        
+        # 验证必要字段
+        if all(k in transaction for k in ['from', 'to', 'amount']):
+            # 确保amount是数字
+            transaction['amount'] = float(transaction['amount'])
+            return transaction
+            
+        return None
+        
+    except Exception as e:
+        print(f"Error parsing text: {str(e)}")
+        return None
 
 # 运行应用
 if __name__ == "__main__":
