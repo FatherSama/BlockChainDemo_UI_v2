@@ -100,7 +100,7 @@ def valid_proof(last_proof, incrementor):
     guess = f'{last_proof}{incrementor}'.encode()  # 编码为字节
     guess_hash = hashlib.sha256(guess).hexdigest()  # 计算哈希值
     # 检查哈希值是否以四个零开头
-    return guess_hash[:4] == "0000"
+    return guess_hash[0] == "0"
 
 
 # ==================================================================================================
