@@ -11,6 +11,8 @@ import hashlib as hasher
 import json
 import subprocess
 from miner_server import  Block, Blockchain
+from decimal import Decimal
+from datetime import datetime
 
 
 my_node = 'http://localhost:5000/'
@@ -38,7 +40,7 @@ subprocess_miner = None
 subprocess_dig = None
 
 
-# 路由，用于处理Start MinerServer按钮的请求
+# 路由,用处理Start MinerServer按钮的请求
 @app.route('/start_miner', methods=['GET'])
 def start_sub_app():
     global subprocess_miner
@@ -120,55 +122,98 @@ def stop_dig():
         return jsonify({"status": "error", "message": str(e)})
 
 
-# 路由，用于处理“提交交易信息”按钮的请求
+# 路由，用于处理"提交交易信息"按钮的请求
 @app.route('/process', methods=['POST'])
 def process_transaction():
-    from_user = request.form.get('from')
-    to_user = request.form.get('to')
-    amount = request.form.get('amount')
+    try:
+        from_user = request.form.get('from')
+        to_user = request.form.get('to')
+        amount = request.form.get('amount')
 
-    # 构建交易数据的JSON对象
-    transaction_data = {
-        'from': from_user,
-        'to': to_user,
-        'amount': amount
-    }
+        # 构建交易数据的JSON对象
+        transaction_data = {
+            'from': from_user,
+            'to': to_user,
+            'amount': float(amount)  # 确保amount是浮点数
+        }
 
-    # 使用requests发送POST请求到/txion端点
-    response = requests.post('http://localhost:5000/txion', json=transaction_data)
+        # 使用requests发送POST请求到/txion端点
+        response = requests.post('http://localhost:5000/txion', json=transaction_data, timeout=3)
 
-    # 检查请求是否成功
-    if response.status_code == 200:
-        return jsonify({
-            "status": "success",
-            "message": f"Transaction processed: {from_user} sent {amount} to {to_user}"
-        })
-    else:
+        # 检查交易请求是否成功
+        if response.status_code == 200:
+            # 交易成功后，触发挖矿
+            try:
+                mine_response = requests.get('http://localhost:5000/mine', timeout=3)
+                if mine_response.status_code == 200:
+                    return jsonify({
+                        "status": "success",
+                        "message": f"Transaction processed and mined: {from_user} sent {amount} to {to_user}"
+                    })
+                else:
+                    return jsonify({
+                        "status": "warning",
+                        "message": f"Transaction added but mining failed: {mine_response.text}"
+                    })
+            except Exception as mine_error:
+                return jsonify({
+                    "status": "warning",
+                    "message": f"Transaction added but mining error: {str(mine_error)}"
+                })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to submit transaction: {response.text}"
+            })
+
+    except Exception as e:
+        print(f"Error in process_transaction: {e}")
         return jsonify({
             "status": "error",
-            "message": "Failed to submit transaction"
-        })
+            "message": f"Error processing transaction: {str(e)}"
+        }), 500
+
+
+def json_serialize(obj):
+    """自定义JSON序列化函数"""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, datetime):
+        return obj.strftime('%Y-%m-%d %H:%M:%S')
+    raise TypeError(f'Object of type {obj.__class__.__name__} is not JSON serializable')
 
 
 # 路由，用于处理查询按钮的请求
 @app.route('/inquiry')
 def inquiry():
-    node_url = node1
-    blockchain = requests.get(my_node + 'blocks', timeout=3)        # 获取区块链信息
-    blockchain = pickle.loads(blockchain.content)
-    blocks = []
-    for block in blockchain:
-        blocks.append({
-            "index": block.index,
-            "timestamp": str(block.timestamp),
-            "data": block.data,
-            "previous_hash": block.previous_hash,
-            "hash": block.hash
-        })
-    blocks_json = json.dumps(blocks, indent=2)
-    print('节点{}返回账本结果如下: '.format(node_url))
-    print(blocks_json)
-    return jsonify(blocks)
+    try:
+        node_url = node1
+        response = requests.get(my_node + 'blocks', timeout=3)
+        blockchain = pickle.loads(response.content)
+        
+        # 转换datetime对象为字符串格式
+        formatted_blockchain = []
+        for block in blockchain:
+            formatted_block = {
+                'block_index': block['block_index'],
+                'timestamp': block['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                'previous_hash': block['previous_hash'],
+                'hash': block['hash'],
+                'proof_of_work': block['proof_of_work'],
+                'data': block['data']
+            }
+            formatted_blockchain.append(formatted_block)
+        
+        print('节点{}返回账本结果如下: '.format(node_url))
+        # 使用自定义序列化函数
+        print(json.dumps(formatted_blockchain, indent=2, default=json_serialize))
+        return jsonify(formatted_blockchain)
+        
+    except Exception as e:
+        print(f"Error in inquiry: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify([]), 500
 
 
 @app.route('/')

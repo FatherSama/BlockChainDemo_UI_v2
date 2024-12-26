@@ -243,20 +243,49 @@
 
         // Handle form submission
         $('#transactionForm').submit(function (event) {
-            event.preventDefault(); // Prevent the default form submission
-            const formData = $(this).serialize(); // Serialize form data
+            event.preventDefault();
+            const formData = $(this).serialize();
+
+            // 显示加载状态
+            $('#InquiryResult').html('<p class="text-info">Processing transaction...</p>');
 
             $.ajax({
                 url: '/process',
                 method: 'POST',
                 data: formData,
                 success: function (response) {
-                    // Display success message in InquiryResult box
-                    $('#InquiryResult').html(`<p class="text-success">${response.message}</p>`);
+                    if (response.status === 'success') {
+                        $('#InquiryResult').html(`
+                            <div class="alert alert-success">
+                                ${response.message}
+                            </div>
+                        `);
+                        // 自动刷新区块链数据
+                        $('#inquiryBtn').click();
+                    } else if (response.status === 'warning') {
+                        $('#InquiryResult').html(`
+                            <div class="alert alert-warning">
+                                ${response.message}
+                            </div>
+                        `);
+                    } else {
+                        $('#InquiryResult').html(`
+                            <div class="alert alert-danger">
+                                ${response.message}
+                            </div>
+                        `);
+                    }
                 },
-                error: function () {
-                    // Display error message in InquiryResult box
-                    $('#InquiryResult').html('<p class="text-danger">Error processing transaction.</p>');
+                error: function (xhr) {
+                    let errorMessage = 'Error processing transaction.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    $('#InquiryResult').html(`
+                        <div class="alert alert-danger">
+                            ${errorMessage}
+                        </div>
+                    `);
                 }
             });
         });
@@ -293,7 +322,7 @@
             data.forEach(entry => {
                 table += `
                     <tr>
-                        <td style="text-align: center">${entry.index}</td>
+                        <td style="text-align: center">${entry.block_index}</td>
                         <td style="text-align: center">${entry.timestamp}</td>
                         <td style="text-align: center">${entry.data['proof-of-work']}</td>
                         <td style="text-align: center">
@@ -314,12 +343,15 @@
         }
 
         function renderTransactions(transactions) {
-            let transactionRows = transactions.map(tx => `
+            if (!transactions || transactions.length === 0) {
+                return 'No transactions';
+            }
+            
+            return transactions.map(tx => `
                 <div>
                     From: ${tx.from}, To: ${tx.to}, Amount: ${tx.amount}
                 </div>
             `).join('');
-            return transactionRows;
         }
 
         document.getElementById('nlTransactionForm').addEventListener('submit', function(e) {

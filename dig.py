@@ -10,6 +10,7 @@
 # dig.py向miner_server发送'/mine'请求，开始挖矿
 
 import requests
+from requests.exceptions import ConnectionError
 import pickle
 import json
 import time
@@ -17,24 +18,57 @@ import time
 from miner_server import Block, Blockchain
 
 my_node = 'http://localhost:5000/'
-
+MAX_RETRIES = 3
+RETRY_DELAY = 5
 
 while True:
-    # 开始挖矿，在这里会停留一段时间，直到做完题挖到一个币
-    response = requests.get(my_node + 'mine')       # 发送GET请求，控制miner_server挖矿
-    blockchain = requests.get(my_node + 'blocks')   # 挖矿完毕，返回区块链数据
-    blockchain = pickle.loads(blockchain.content)   # pickle加载数据
+    try:
+        # 开始挖矿
+        print("Attempting to connect to miner server...")
+        response = requests.get(my_node + 'mine')       
+        blockchain_response = requests.get(my_node + 'blocks')   
 
-    blocks = []
-    # 将返回的区块链数据写入到blocks列表中，用于输出显示
-    for block in blockchain:
-        blocks.append({
-            "index": block.index,
-            "timestamp": str(block.timestamp),
-            "data": block.data,
-            "previous_hash": block.previous_hash,
-            "hash": block.hash
-        })
-    blocks_json = json.dumps(blocks, indent=2)
-    print("The last block: ", blocks[-1])
-    # time.sleep(0.5)
+        try:
+            # 使用pickle加载数据
+            blockchain = pickle.loads(blockchain_response.content)
+            
+            blocks = []
+            for block in blockchain:
+                # 确保所有值都被正确转换为JSON兼容格式
+                block_data = {
+                    "index": str(block.index),
+                    "timestamp": str(block.timestamp),
+                    "data": str(block.data) if block.data else "",
+                    "previous_hash": str(block.previous_hash),
+                    "hash": str(block.hash)
+                }
+                blocks.append(block_data)
+            
+            if blocks:
+                print("Current blockchain length:", len(blocks))
+                print("The last block: ", json.dumps(blocks[-1], ensure_ascii=False))
+            else:
+                print("No blocks in the chain yet")
+                
+        except pickle.UnpicklingError as e:
+            print(f"Error unpickling data: {e}")
+        except AttributeError as e:
+            print(f"Error accessing block attributes: {e}")
+        except json.JSONDecodeError as e:
+            print(f"JSON encoding error: {e}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            print(f"Response content: {blockchain_response.content[:100]}")  # 打印前100个字符用于调试
+        
+        time.sleep(1)  # 添加短暂延迟避免过于频繁的请求
+        
+    except ConnectionError as e:
+        print(f"Connection failed: Miner server not running at {my_node}")
+        print(f"Please ensure miner_server.py is running")
+        print(f"Retrying in {RETRY_DELAY} seconds...")
+        time.sleep(RETRY_DELAY)
+        continue
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    
+    time.sleep(1)

@@ -17,6 +17,7 @@ import pickle
 import time
 import hashlib
 from consensus import PBFTConsensus
+from db_handler import BlockchainDB
 
 # ==================================================================================================
 # 定义区块结构
@@ -41,7 +42,31 @@ class Block:
 
 class Blockchain:
     def __init__(self):
-        self.blockchain = []  # 用列表记录区块链
+        self.db = BlockchainDB()
+        # 检查是否需要创建创世块
+        if not self.db.get_last_block():
+            genesis_block = create_genesis_block()
+            self.db.insert_block(genesis_block)
+    
+    @property
+    def blockchain(self):
+        """获取完整的区块链"""
+        return self.db.get_all_blocks()
+    
+    def append(self, block):
+        """添加新区块"""
+        return self.db.insert_block(block)
+    
+    def __getitem__(self, index):
+        """支持使用索引访问区块"""
+        blocks = self.blockchain
+        if 0 <= index < len(blocks):
+            return blocks[index]
+        raise IndexError("Block index out of range")
+    
+    def __len__(self):
+        """获取区块链长度"""
+        return len(self.blockchain)
 
 
 # 生成创世块
@@ -58,7 +83,7 @@ def create_genesis_block():
 
 # 获取其他节点的数据
 def find_new_chains():
-    # 用 GET 请求获取每个节点的区块链
+    # 用 GET ��求获取每个节点的区块链
     other_chains = []
     for node_url in peer_nodes:
         # 使用try避免一个节点（矿工）没开机，网络请求失败把自己搞崩
@@ -139,61 +164,90 @@ pbft = PBFTConsensus(all_nodes, my_node)
 # 处理 POST 请求，接收交易信息
 @node.route('/txion', methods=['POST'])
 def transaction():
-    # 提取交易数据
-    new_txion = request.get_json()
-    # 添加交易到待处理列表 this_node_transactions 中
-    this_node_transactions.append(new_txion)
-    # 显示提交的交易
-    print("New transaction")
-    print("FROM: {}".format(new_txion['from'].encode('ascii', 'replace')))
-    print("TO: {}".format(new_txion['to'].encode('ascii', 'replace')))
-    print("AMOUNT: {}\n".format(new_txion['amount']))
-    # 回应客户端交易已提交
-    return "Transaction submission successful! \n"
+    try:
+        # 提取交易数据
+        new_txion = request.get_json()
+        
+        # 验证交易数据格式
+        if not all(k in new_txion for k in ['from', 'to', 'amount']):
+            return "Invalid transaction data", 400
+            
+        # 确保amount是数值类型
+        try:
+            new_txion['amount'] = float(new_txion['amount'])
+        except (ValueError, TypeError):
+            return "Invalid amount value", 400
+            
+        # 添加交易到待处理列表
+        this_node_transactions.append(new_txion)
+        
+        # 显示提交的交易
+        print("New transaction")
+        print("FROM: {}".format(new_txion['from']))
+        print("TO: {}".format(new_txion['to']))
+        print("AMOUNT: {}\n".format(new_txion['amount']))
+        
+        return jsonify({
+            "message": "Transaction submission successful",
+            "transaction": new_txion
+        })
+        
+    except Exception as e:
+        print(f"Error processing transaction: {e}")
+        return str(e), 500
 
 
 # 处理 GET 请求，返回区块链的信息
 @node.route('/blocks', methods=['GET'])
 def get_blocks():
-    # 处理成 JSON 格式
-    blocks = []
-    for block in bc.blockchain:
-        blocks.append({
-            "index": block.index,
-            "timestamp": str(block.timestamp),
-            "data": block.data,
-            "previous_hash": block.previous_hash,
-            "hash": block.hash
-        })
-    chain_to_send = json.dumps(blocks, indent=2)
-    chain_to_send_object = pickle.dumps(bc.blockchain)
-    return chain_to_send_object
+    try:
+        # 从数据库获取所有区块
+        blocks = bc.blockchain  # 这里会调用Blockchain类的blockchain属性方法
+        if not blocks:
+            return pickle.dumps([])
+            
+        # blocks已经是正确格式，直接返回
+        return pickle.dumps(blocks)
+    except Exception as e:
+        print(f"Error getting blocks: {e}")
+        return pickle.dumps([])
 
 
 # 处理 GET 请求 /mine，用于挖矿
 @node.route('/mine', methods=['GET'])
 def mine():
-    # 只有主节点才能挖矿
     if not pbft.is_primary():
         return jsonify(["Not the primary node"])
     
-    # 原有的挖矿逻辑保持不变
-    last_block = bc.blockchain[len(bc.blockchain) - 1]
-    last_proof = last_block.data['proof-of-work']
+    # 获取最后一个区块
+    last_block = bc.blockchain[-1]
+    if not last_block:
+        return jsonify(["No blocks in chain"])
+        
+    last_proof = last_block['data']['proof-of-work']
     proof = proof_of_work(last_proof)
     
-    this_node_transactions.append(
-        {"from": "Network", "to": miner_name, "amount": 1}
-    )
+    # 准备区块数据
+    block_transactions = list(this_node_transactions)  # 创建交易列表的副本
+    
+    # 添加挖矿奖励交易
+    block_transactions.append({
+        "from": "Network",
+        "to": miner_name,
+        "amount": 1.0  # 确保是浮点数
+    })
     
     new_block_data = {
         "proof-of-work": proof,
-        "transactions": list(this_node_transactions)
+        "transactions": block_transactions  # 使用交易副本
     }
-    new_block_index = last_block.index + 1
+    
+    new_block_index = last_block['block_index'] + 1
     new_block_timestamp = date.datetime.now()
-    last_block_hash = last_block.hash
-    this_node_transactions[:] = []
+    last_block_hash = last_block['hash']
+    
+    # 清空待处理交易列表
+    this_node_transactions.clear()  # 使用clear()方法清空列表
     
     mined_block = Block(
         new_block_index,
@@ -202,43 +256,29 @@ def mine():
         last_block_hash
     )
     
-    # 使用PBFT共识
     if pbft.broadcast_prepare(mined_block):
-        # 如果准备阶段成功，进入提交阶段
         if pbft.broadcast_commit(mined_block):
-            # 共识成功，将区块添加到链上
-            bc.blockchain.append(mined_block)
+            bc.append(mined_block)
             return jsonify(["Block added successfully"])
     
     return jsonify(["Consensus failed"])
 
 # 在Block类后添加区块验证函数
 def valid_block(block):
-    """
-    验证区块的有效性
-    1. 检查区块的索引是否连续
-    2. 检查区块的previous_hash是否正确
-    3. 验证工作量证明
-    """
-    # 如果是创世块，直接返回True
     if block.index == 0:
         return True
         
-    # 获取前一个区块
     previous_block = bc.blockchain[-1]
     
-    # 验证区块索引是否连续
-    if block.index != previous_block.index + 1:
+    if block.index != previous_block['block_index'] + 1:
         print(f"Invalid block index: {block.index}")
         return False
         
-    # 验证前一个区块的哈希值
-    if block.previous_hash != previous_block.hash:
+    if block.previous_hash != previous_block['hash']:
         print(f"Invalid previous hash: {block.previous_hash}")
         return False
         
-    # 验证工作量证明
-    last_proof = previous_block.data['proof-of-work']
+    last_proof = previous_block['data']['proof-of-work']
     current_proof = block.data['proof-of-work']
     if not valid_proof(last_proof, current_proof):
         print(f"Invalid proof of work: {current_proof}")
@@ -280,7 +320,7 @@ def handle_commit():
             # 添加提交投票
             if pbft.add_commit_vote(block.hash, node_from):
                 # 如果收到足够的提交投票，将区块添加到链上
-                bc.blockchain.append(block)
+                bc.append(block)
             return "OK"
         else:
             return "Invalid block", 400
