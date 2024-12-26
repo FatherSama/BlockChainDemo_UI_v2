@@ -83,20 +83,21 @@ def create_genesis_block():
 
 # 获取其他节点的数据
 def find_new_chains():
-    # 用 GET ��求获取每个节点的区块链
+    """获取其他节点的区块链数据"""
     other_chains = []
     for node_url in peer_nodes:
-        # 使用try避免一个节点（矿工）没开机，网络请求失败把自己搞崩
         try:
-            block = requests.get(node_url + "/blocks", timeout=timeout)
-            # 将 JSON 格式转成 Python 字典
+            block = requests.get(
+                node_url + "/blocks", 
+                timeout=timeout  # 使用全局timeout变量
+            )
             block = pickle.loads(block.content)
-            # 将获取的区块链添加到列表
             other_chains.append(block)
             print('----------Got the other miners books---------')
-        except:
-            print('----------No other miners were found-----------')
-            pass
+        except requests.exceptions.Timeout:
+            print(f'----------Request to {node_url} timed out after {timeout} seconds-----------')
+        except Exception as e:
+            print(f'----------Error connecting to {node_url}: {str(e)}-----------')
     return other_chains
 
 
@@ -147,7 +148,7 @@ all_nodes = {node1,node2}
 # 集合差集，即其他节点
 peer_nodes = all_nodes.difference({my_node})
 # 设置超时间
-timeout = 3
+timeout = 30  # 将超时时间从3秒改为30秒
 
 # 创建一个区块链
 bc = Blockchain()
@@ -216,52 +217,80 @@ def get_blocks():
 # 处理 GET 请求 /mine，用于挖矿
 @node.route('/mine', methods=['GET'])
 def mine():
-    if not pbft.is_primary():
-        return jsonify(["Not the primary node"])
-    
-    # 获取最后一个区块
-    last_block = bc.blockchain[-1]
-    if not last_block:
-        return jsonify(["No blocks in chain"])
+    try:
+        if not pbft.is_primary():
+            return jsonify({"status": "error", "message": "Not the primary node"})
         
-    last_proof = last_block['data']['proof-of-work']
-    proof = proof_of_work(last_proof)
-    
-    # 准备区块数据
-    block_transactions = list(this_node_transactions)  # 创建交易列表的副本
-    
-    # 添加挖矿奖励交易
-    block_transactions.append({
-        "from": "Network",
-        "to": miner_name,
-        "amount": 1.0  # 确保是浮点数
-    })
-    
-    new_block_data = {
-        "proof-of-work": proof,
-        "transactions": block_transactions  # 使用交易副本
-    }
-    
-    new_block_index = last_block['block_index'] + 1
-    new_block_timestamp = date.datetime.now()
-    last_block_hash = last_block['hash']
-    
-    # 清空待处理交易列表
-    this_node_transactions.clear()  # 使用clear()方法清空列表
-    
-    mined_block = Block(
-        new_block_index,
-        new_block_timestamp,
-        new_block_data,
-        last_block_hash
-    )
-    
-    if pbft.broadcast_prepare(mined_block):
-        if pbft.broadcast_commit(mined_block):
-            bc.append(mined_block)
-            return jsonify(["Block added successfully"])
-    
-    return jsonify(["Consensus failed"])
+        # 获取最后一个区块
+        last_block = bc.blockchain[-1]
+        if not last_block:
+            return jsonify({"status": "error", "message": "No blocks in chain"})
+            
+        last_proof = last_block['data']['proof-of-work']
+        
+        # 设置更长的超时时间
+        proof = proof_of_work(last_proof)
+        
+        # 准备区块数据
+        block_transactions = list(this_node_transactions)  # 创建交易列表的副本
+        
+        # 添加挖矿奖励交易
+        block_transactions.append({
+            "from": "Network",
+            "to": miner_name,
+            "amount": 1.0
+        })
+        
+        new_block_data = {
+            "proof-of-work": proof,
+            "transactions": block_transactions
+        }
+        
+        new_block_index = last_block['block_index'] + 1
+        new_block_timestamp = date.datetime.now()
+        last_block_hash = last_block['hash']
+        
+        # 清空待处理交易列表
+        this_node_transactions.clear()
+        
+        mined_block = Block(
+            new_block_index,
+            new_block_timestamp,
+            new_block_data,
+            last_block_hash
+        )
+        
+        # 添加超时处理
+        try:
+            if pbft.broadcast_prepare(mined_block):
+                if pbft.broadcast_commit(mined_block):
+                    bc.append(mined_block)
+                    return jsonify({
+                        "status": "success",
+                        "message": "Block added successfully",
+                        "block": {
+                            "index": mined_block.index,
+                            "timestamp": mined_block.timestamp.isoformat(),
+                            "transactions": mined_block.data["transactions"]
+                        }
+                    })
+            return jsonify({"status": "error", "message": "Consensus failed"})
+        except requests.exceptions.Timeout:
+            return jsonify({
+                "status": "error",
+                "message": f"Mining operation timed out after {timeout} seconds. Please try again."
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Mining error: {str(e)}"
+            })
+            
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}"
+        })
 
 # 在Block类后添加区块验证函数
 def valid_block(block):
@@ -327,103 +356,6 @@ def handle_commit():
     except Exception as e:
         print(f"Error in handle_commit: {str(e)}")
         return "Error processing commit message", 500
-
-# 在现有的路由之前添加新的路由
-@node.route('/parse_transaction', methods=['POST'])
-def parse_transaction():
-    """解析自然语言并转换为交易"""
-    try:
-        # 获取用户输入的文本
-        text = request.get_json()['text']
-        
-        # 调用大语言模型解析文本
-        # 这里使用一个简单的示例解析逻辑，你需要替换为实际的大语言模型API调用
-        transaction = parse_text_to_transaction(text)
-        
-        if transaction:
-            # 将解析后的交易发送到/txion端点
-            response = requests.post(
-                f"{my_node}txion",
-                json=transaction,
-                timeout=timeout
-            )
-            
-            if response.status_code == 200:
-                return jsonify({
-                    "success": True,
-                    "message": "Transaction processed successfully",
-                    "transaction": transaction
-                })
-            else:
-                return jsonify({
-                    "success": False,
-                    "message": "Failed to process transaction"
-                }), 400
-        else:
-            return jsonify({
-                "success": False,
-                "message": "Could not parse transaction from text"
-            }), 400
-            
-    except Exception as e:
-        print(f"Error processing natural language transaction: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": f"Error: {str(e)}"
-        }), 500
-
-def parse_text_to_transaction(text):
-    """
-    使用大语言模型解析文本为交易信息
-    示例文本：
-    - "Alice 向 Bob 转账 5 个币"
-    - "从 Charlie 转 10 个币给 Dave"
-    """
-    try:
-        # 这里替换为实际的大语言模型API调用
-        # 示例：使用OpenAI的API
-        import openai
-        
-        # 设置你的API密钥
-        openai.api_key = 'your-api-key'
-        
-        # 构造提示词
-        prompt = f"""
-        请将以下文本解析为交易信息，返回JSON格式,如果没有交易信息，则识别为NULL：
-        {text}
-        
-        格式要求：
-        {{
-            "from": "发送方名称",
-            "to": "接收方名称",
-            "amount": 数字金额
-        }}
-        """
-        
-        # 调用API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "你是一个交易解析助手，负责将自然语言转换为结构化的交易信息。"},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        # 解析返回的JSON
-        import json
-        transaction = json.loads(response.choices[0].message.content)
-        
-        # 验证必要字段
-        if all(k in transaction for k in ['from', 'to', 'amount']):
-            # 确保amount是数字
-            transaction['amount'] = float(transaction['amount'])
-            return transaction
-            
-        return None
-        
-    except Exception as e:
-        print(f"Error parsing text: {str(e)}")
-        return None
 
 # 运行应用
 if __name__ == "__main__":

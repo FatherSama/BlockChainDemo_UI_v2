@@ -216,6 +216,130 @@ def inquiry():
         return jsonify([]), 500
 
 
+# 路由，用于处理大语言模型的请求
+@app.route('/parse_transaction', methods=['POST'])
+def parse_transaction():
+    """解析自然语言并转换为交易"""
+    try:
+        # 获取用户输入的文本
+        text = request.get_json()['text']
+        
+        # 调用大语言模型解析文本
+        transaction = parse_text_to_transaction(text)
+        
+        if transaction:
+            # 将解析后的交易发送到/txion端点
+            response = requests.post(
+                'http://localhost:5000/txion',
+                json=transaction,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                # 交易成功后，触发挖矿
+                try:
+                    mine_response = requests.get('http://localhost:5000/mine', timeout=30)
+                    if mine_response.status_code == 200:
+                        return jsonify({
+                            "success": True,
+                            "message": "交易已处理并开始挖矿",
+                            "transaction": transaction
+                        })
+                    else:
+                        return jsonify({
+                            "success": True,
+                            "message": "交易已提交但挖矿失败",
+                            "transaction": transaction
+                        })
+                except Exception as mine_error:
+                    return jsonify({
+                        "success": True,
+                        "message": f"交易已提交但挖矿出错: {str(mine_error)}",
+                        "transaction": transaction
+                    })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": "交易处理失败"
+                }), 400
+        else:
+            return jsonify({
+                "success": False,
+                "message": "无法解析交易内容"
+            }), 400
+            
+    except Exception as e:
+        print(f"Error processing natural language transaction: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"系统错误: {str(e)}"
+        }), 500
+
+def parse_text_to_transaction(text):
+    """
+    用大语言模型解析文本为交易信息
+    示例文本：
+    - "Alice 向 Bob 转账 5 个币"
+    - "从 Charlie 转 10 个币给 Dave"
+    """
+    try:
+        # 使用智谱AI的API
+        from zhipuai import ZhipuAI
+        
+        # 设置您的API密钥
+        client = ZhipuAI(api_key="e71e12a9ee584f047d057789ad443956.9nEDtghTlVmivL2d")  # 请填写您自己的APIKey
+        
+        # 构造提示词
+        prompt = f"""
+        请将以下文本解析为交易信息，返回JSON格式,如果没有交易信息，则识别为NULL：
+        {text}
+        
+        格式要求：
+        {{
+            "from": "发送方名称",
+            "to": "接收方名称",
+            "amount": 数字金额
+        }}
+        """
+        
+        # 调用API
+        response = client.chat.completions.create(
+            model="glm-4-plus",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        # 从响应中提取文本内容
+        response_text = response.choices[0].message.content
+        
+        # 解析返回的JSON
+        import json
+        # 尝试直接解析返回的文本
+        try:
+            transaction = json.loads(response_text)
+        except json.JSONDecodeError:
+            # 如果直接解析失败，尝试从文本中提取JSON部分
+            import re
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                transaction = json.loads(json_match.group())
+            else:
+                return None
+        
+        # 验证必要字段
+        if all(k in transaction for k in ['from', 'to', 'amount']):
+            # 确保amount是数字
+            transaction['amount'] = float(transaction['amount'])
+            return transaction
+            
+        return None
+        
+    except Exception as e:
+        print(f"Error parsing text: {str(e)}")
+        return None
+
+
 @app.route('/')
 def index():
     return render_template('index2.html')
@@ -224,4 +348,7 @@ def index():
 # ==================================================================================================
 # 运行应用
 if __name__ == "__main__":
-    app.run('0.0.0.0', 5008)    # 在本机5008端口运行ui界面
+    app.run('0.0.0.0', 5008)    # 在本机5008端口运行ui界面 
+
+
+

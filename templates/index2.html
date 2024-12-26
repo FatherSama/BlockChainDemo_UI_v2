@@ -33,6 +33,51 @@
         td {
             text-align: center;
         }
+
+        .blockchain-window {
+            height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 15px;
+            background-color: #f8f9fa;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .block-row {
+            transition: transform 0.2s;
+            background-color: white;
+            margin-bottom: 10px;
+        }
+
+        .block-row:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .transaction-cell {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        /* 自定义滚动条样式 */
+        .blockchain-window::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .blockchain-window::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .blockchain-window::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .blockchain-window::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
     </style>
     <script>
         $(document).ready(function () {
@@ -216,8 +261,8 @@
     <div style="text-align: center;">
         <button id="inquiryBtn" class="btn btn-primary mb-4">Query Transaction List</button>
     </div>
-    <div id="ledgerTable" class="table-responsive">
-
+    <div class="blockchain-window">
+        <div id="ledgerTable" class="table-responsive"></div>
     </div>
 </div>
 <div class="container mt-4">
@@ -261,19 +306,27 @@
                             </div>
                         `);
                         // 自动刷新区块链数据
-                        $('#inquiryBtn').click();
+                        refreshBlockchainData();
                     } else if (response.status === 'warning') {
                         $('#InquiryResult').html(`
                             <div class="alert alert-warning">
                                 ${response.message}
+                                <br>
+                                <small>Note: Transaction may still be processed despite timeout.</small>
                             </div>
                         `);
+                        // 延迟刷新区块链数据，给一些时间让交易完成
+                        setTimeout(refreshBlockchainData, 5000);
                     } else {
                         $('#InquiryResult').html(`
                             <div class="alert alert-danger">
                                 ${response.message}
+                                <br>
+                                <small>Please check the blockchain data to confirm transaction status.</small>
                             </div>
                         `);
+                        // 延迟刷新区块链数据
+                        setTimeout(refreshBlockchainData, 5000);
                     }
                 },
                 error: function (xhr) {
@@ -282,38 +335,64 @@
                         errorMessage = xhr.responseJSON.message;
                     }
                     $('#InquiryResult').html(`
-                        <div class="alert alert-danger">
+                        <div class="alert alert-warning">
                             ${errorMessage}
+                            <br>
+                            <small>Note: Your transaction might still be processed. Please check the blockchain data.</small>
                         </div>
                     `);
+                    // 延迟刷新区块链数据
+                    setTimeout(refreshBlockchainData, 5000);
                 }
             });
         });
 
-        $('#inquiryBtn').click(function () {
+        // 添加区块链数据刷新函数
+        function refreshBlockchainData() {
             $.ajax({
                 url: '/inquiry',
                 method: 'GET',
                 success: function (data) {
                     renderTable(data);
+                    // 添加刷新提示
+                    $('#ledgerTable').prepend(`
+                        <div class="alert alert-info alert-dismissible fade show" role="alert">
+                            Blockchain data refreshed
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    `);
                 },
                 error: function () {
-                    $('#ledgerTable').html('<p class="text-danger">Error fetching ledger data.</p>');
+                    $('#ledgerTable').prepend(`
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            Error refreshing blockchain data. Please try again.
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    `);
                 }
             });
+        }
+
+        // 修改查询按钮点击事件
+        $('#inquiryBtn').click(function () {
+            refreshBlockchainData();
         });
 
         function renderTable(data) {
             let table = `
-                <table class="table table-bordered table-hover">
-                    <thead class="thead-dark">
+                <table class="table">
+                    <thead class="thead-dark" style="position: sticky; top: 0; z-index: 1;">
                         <tr>
                             <th>Index</th>
                             <th>Timestamp</th>
                             <th>Proof of Work</th>
                             <th>Transactions</th>
                             <th>Previous Hash</th>
-                            <th style="width: 10%">Hash</th>
+                            <th>Hash</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -321,15 +400,23 @@
 
             data.forEach(entry => {
                 table += `
-                    <tr>
-                        <td style="text-align: center">${entry.block_index}</td>
-                        <td style="text-align: center">${entry.timestamp}</td>
-                        <td style="text-align: center">${entry.data['proof-of-work']}</td>
-                        <td style="text-align: center">
-                            ${entry.data.transactions ? renderTransactions(entry.data.transactions) : 'No transactions'}
+                    <tr class="block-row">
+                        <td class="align-middle">${entry.block_index}</td>
+                        <td class="align-middle">${formatTimestamp(entry.timestamp)}</td>
+                        <td class="align-middle">${entry.data['proof-of-work']}</td>
+                        <td class="transaction-cell">
+                            ${renderTransactions(entry.data.transactions)}
                         </td>
-                        <td style="text-align: center">${entry.previous_hash}</td>
-                        <td style="text-align: center;width: 10%" >${entry.hash}</td>
+                        <td class="align-middle">
+                            <div class="text-truncate" style="max-width: 150px;" title="${entry.previous_hash}">
+                                ${entry.previous_hash}
+                            </div>
+                        </td>
+                        <td class="align-middle">
+                            <div class="text-truncate" style="max-width: 150px;" title="${entry.hash}">
+                                ${entry.hash}
+                            </div>
+                        </td>
                     </tr>
                 `;
             });
@@ -342,14 +429,27 @@
             $('#ledgerTable').html(table);
         }
 
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        }
+
         function renderTransactions(transactions) {
             if (!transactions || transactions.length === 0) {
-                return 'No transactions';
+                return '<div class="text-muted">No transactions</div>';
             }
             
             return transactions.map(tx => `
-                <div>
-                    From: ${tx.from}, To: ${tx.to}, Amount: ${tx.amount}
+                <div class="transaction-item p-2 border-bottom">
+                    <div class="small">
+                        <strong>From:</strong> ${tx.from}
+                    </div>
+                    <div class="small">
+                        <strong>To:</strong> ${tx.to}
+                    </div>
+                    <div class="small">
+                        <strong>Amount:</strong> ${tx.amount}
+                    </div>
                 </div>
             `).join('');
         }
@@ -359,6 +459,13 @@
             
             const text = document.getElementById('transactionText').value;
             const resultDiv = document.getElementById('transactionResult');
+            
+            // 显示加载状态
+            resultDiv.innerHTML = `
+                <div class="alert alert-info">
+                    正在处理交易请求...
+                </div>
+            `;
             
             // 发送请求到解析端点
             fetch('/parse_transaction', {
@@ -373,16 +480,26 @@
                 if (data.success) {
                     resultDiv.innerHTML = `
                         <div class="alert alert-success">
-                            交易已处理：
-                            <br>从 ${data.transaction.from} 
-                            <br>到 ${data.transaction.to} 
-                            <br>金额：${data.transaction.amount}
+                            <h5>交易处理成功！</h5>
+                            <p>${data.message}</p>
+                            <hr>
+                            <p><strong>交易详情：</strong></p>
+                            <ul>
+                                <li>从: ${data.transaction.from}</li>
+                                <li>到: ${data.transaction.to}</li>
+                                <li>金额: ${data.transaction.amount}</li>
+                            </ul>
                         </div>
                     `;
+                    // 清空输入框
+                    document.getElementById('transactionText').value = '';
+                    // 延迟刷新区块链数据
+                    setTimeout(refreshBlockchainData, 5000);
                 } else {
                     resultDiv.innerHTML = `
                         <div class="alert alert-danger">
-                            错误：${data.message}
+                            <h5>处理失败</h5>
+                            <p>${data.message}</p>
                         </div>
                     `;
                 }
@@ -390,7 +507,8 @@
             .catch(error => {
                 resultDiv.innerHTML = `
                     <div class="alert alert-danger">
-                        请求失败：${error}
+                        <h5>系统错误</h5>
+                        <p>请求失败：${error}</p>
                     </div>
                 `;
             });

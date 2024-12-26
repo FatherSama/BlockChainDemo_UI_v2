@@ -10,10 +10,11 @@ class PBFTConsensus:
         self.current_view = 0  # 当前视图编号
         self.prepare_votes = defaultdict(set)  # 准备阶段投票
         self.commit_votes = defaultdict(set)  # 提交阶段投票
-        self.timeout = 3  # 请求超时时间    
+        self.timeout = 30  # 修改默认超时时间为30秒
         
+    
     def is_primary(self) -> bool:
-        """判断当前节点是否为主节点"""
+        """判断当前节点是否为主节点"""   
         # 如果只有一个节点，则该节点就是主节点
         if len(self.nodes) == 1:
             return True
@@ -33,53 +34,66 @@ class PBFTConsensus:
     
     def broadcast_prepare(self, block) -> bool:
         """广播准备消息"""
-        # 如果是单节点，直接返回True
-        if len(self.nodes) <= 1:
-            return True
-            
-        success_count = 0
+        success_count = 1  # 包括自己的投票
+        
         for node in self.nodes:
-            if node != self.my_node:
-                try:
-                    response = requests.post(
-                        f"{node}/prepare",
-                        data=pickle.dumps({
-                            'block': block,
-                            'view': self.current_view,
-                            'from': self.my_node
-                        }),
-                        timeout=self.timeout
-                    )
-                    if response.status_code == 200:
-                        success_count += 1
-                except:
-                    continue
-        # 需要超过2/3的节点响应
+            if node == self.my_node:
+                continue
+            
+            try:
+                data = pickle.dumps({
+                    'block': block,
+                    'from': self.my_node
+                })
+                
+                response = requests.post(
+                    f"{node}prepare",
+                    data=data,
+                    timeout=self.timeout  # 使用类的timeout属性
+                )
+                
+                if response.status_code == 200:
+                    success_count += 1
+                    
+            except requests.exceptions.Timeout:
+                print(f"Prepare broadcast to {node} timed out after {self.timeout} seconds")
+                continue
+            except Exception as e:
+                print(f"Error in prepare broadcast to {node}: {e}")
+                continue
+            
         return success_count >= self.get_required_votes()
     
     def broadcast_commit(self, block) -> bool:
         """广播提交消息"""
-        # 如果是单节点，直接返回True
-        if len(self.nodes) <= 1:
-            return True
-            
-        success_count = 0
+        success_count = 1  # 包括自己的投票
+        
         for node in self.nodes:
-            if node != self.my_node:
-                try:
-                    response = requests.post(
-                        f"{node}/commit",
-                        data=pickle.dumps({
-                            'block': block,
-                            'view': self.current_view,
-                            'from': self.my_node
-                        }),
-                        timeout=self.timeout
-                    )
-                    if response.status_code == 200:
-                        success_count += 1
-                except:
-                    continue
+            if node == self.my_node:
+                continue
+            
+            try:
+                data = pickle.dumps({
+                    'block': block,
+                    'from': self.my_node
+                })
+                
+                response = requests.post(
+                    f"{node}commit",
+                    data=data,
+                    timeout=self.timeout  # 使用类的timeout属性
+                )
+                
+                if response.status_code == 200:
+                    success_count += 1
+                    
+            except requests.exceptions.Timeout:
+                print(f"Commit broadcast to {node} timed out after {self.timeout} seconds")
+                continue
+            except Exception as e:
+                print(f"Error in commit broadcast to {node}: {e}")
+                continue
+            
         return success_count >= self.get_required_votes()
     
     def add_prepare_vote(self, block_hash: str, node: str) -> bool:
