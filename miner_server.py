@@ -79,7 +79,7 @@ def find_new_chains():
 def proof_of_work(last_proof):
     """
     简单的工作量证明算法：
-     - 找到一个数字 p'��得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
+     - 找到一个数字 p'得哈希值 hash(pp') 包含前四个零，其中 p 是上一个 p'
      - p 是上一个证明，p' 是新的证明
     :param last_proof: <int>
     :return: <int>
@@ -121,7 +121,7 @@ node2 = 'http://' + ip_node2 + ':5000/'
 all_nodes = {node1,node2}
 # 集合差集，即其他节点
 peer_nodes = all_nodes.difference({my_node})
-# 设置超���时间
+# 设置超时间
 timeout = 3
 
 # 创建一个区块链
@@ -349,7 +349,7 @@ def parse_text_to_transaction(text):
         
         # 构造提示词
         prompt = f"""
-        请将以下文本解析为交易信息，返回JSON格式：
+        请将以下文本解析为交易信息，返回JSON格式,如果没有交易信息，则识别为NULL：
         {text}
         
         格式要求：

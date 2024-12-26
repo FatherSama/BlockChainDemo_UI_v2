@@ -10,7 +10,7 @@ class PBFTConsensus:
         self.current_view = 0  # 当前视图编号
         self.prepare_votes = defaultdict(set)  # 准备阶段投票
         self.commit_votes = defaultdict(set)  # 提交阶段投票
-        self.timeout = 3  # 请求超时时间
+        self.timeout = 3  # 请求超时时间    
         
     def is_primary(self) -> bool:
         """判断当前节点是否为主节点"""
